@@ -41,11 +41,11 @@ Store the following secrets in your GitHub repository settings:
 - Install Git
 - Install MariaDB
 - Initialize the database (using SQL commands from Section 6 above)
-- ks8 ingress controller 
+- k8s ingress controller 
 
-### Step 6: Clone Repository
+### Step 6: Clone Repository on server
 ```bash
-git clone <your-repository-url>
+git clone <your-repository-url>   
 ```
 
 ### Step 7: Deploy Backend
