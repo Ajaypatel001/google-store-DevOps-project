@@ -22,12 +22,10 @@ jobs:
 
     steps:
       # -------------------------
-      # Checkout
+      # Checkout (FIXED)
       # -------------------------
       - name: 🧾 Checkout repository
         uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GIT_PAT }}
 
       # -------------------------
       # AWS Credentials
@@ -77,7 +75,7 @@ jobs:
                 --image-scanning-configuration scanOnPush=true
 
             docker build -t $IMAGE_URI $FOLDER
-            docker push $IMAGE_URI || exit 1
+            docker push $IMAGE_URI
 
             sed -i "s|image: .*|image: $IMAGE_URI|" "$FOLDER/deployment.yml"
           done
@@ -96,13 +94,13 @@ jobs:
                 --image-scanning-configuration scanOnPush=true
 
             docker build -t $IMAGE_URI $FOLDER
-            docker push $IMAGE_URI || exit 1
+            docker push $IMAGE_URI
 
             sed -i "s|image: .*|image: $IMAGE_URI|" "$FOLDER/backend-deployment.yml"
           fi
 
       # -------------------------
-      # Commit YAML changes
+      # Commit YAML changes (FIXED PUSH)
       # -------------------------
       - name: 🔄 Commit updated YAML files
         run: |
@@ -111,10 +109,20 @@ jobs:
 
           git add frontend/**/deployment.yml backend/backend-deployment.yml
           git commit -m "🔄 Update image tags after build [skip ci]" || echo "No changes"
-          git push origin main || echo "Nothing to push"
+
+          git push https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git HEAD:main || echo "Nothing to push"
 
       # -------------------------
-      # Configure kubectl
+      # Install kubectl (IMPORTANT FIX)
+      # -------------------------
+      - name: 📦 Install kubectl
+        run: |
+          curl -LO "https://storage.googleapis.com/kubernetes-release/release/$(curl -s https://storage.googleapis.com/kubernetes-release/release/stable.txt)/bin/linux/amd64/kubectl"
+          chmod +x kubectl
+          sudo mv kubectl /usr/local/bin/
+
+      # -------------------------
+      # Configure kubeconfig
       # -------------------------
       - name: ⚙️ Update kubeconfig
         run: |
