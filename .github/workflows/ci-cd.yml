@@ -1,4 +1,6 @@
+
 name: CI/CD for Shopping Site (Frontend + Backend)
+
 
 on:
   push:
@@ -7,7 +9,7 @@ on:
 
 env:
   AWS_REGION: us-east-1
-  ECR_REGISTRY: "${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com"
+  ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com
 
   FRONTEND_SERVICES: "main electronics phones computers earphones googlemusic googlepay googleclothes googlegrocery"
   BACKEND_SERVICE: "backend"
@@ -17,15 +19,16 @@ permissions:
 
 jobs:
   deploy:
-    if: "!contains(github.event.head_commit.message, '[skip ci]')"
     runs-on: ubuntu-latest
 
     steps:
       # -------------------------
-      # Checkout (FIXED)
+      # Checkout
       # -------------------------
       - name: 🧾 Checkout repository
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GIT_PAT }}
 
       # -------------------------
       # AWS Credentials
@@ -57,11 +60,6 @@ jobs:
             REPO_NAME="shopping-site-$service"
             IMAGE_URI="$ECR_REGISTRY/$REPO_NAME:$IMAGE_TAG"
 
-            if [ ! -d "$FOLDER" ]; then
-              echo "⚠️ Folder not found: $FOLDER, skipping..."
-              continue
-            fi
-
             if [ ! -f "$FOLDER/Dockerfile" ]; then
               echo "⚠️ No Dockerfile in $FOLDER, skipping..."
               continue
@@ -77,7 +75,7 @@ jobs:
             docker build -t $IMAGE_URI $FOLDER
             docker push $IMAGE_URI
 
-            sed -i "s|image: .*|image: $IMAGE_URI|" "$FOLDER/deployment.yml"
+            sed -i "s|image:.*|image: $IMAGE_URI|g" "$FOLDER/deployment.yml"
           done
 
           # -------- Backend --------
@@ -85,22 +83,20 @@ jobs:
           REPO_NAME="shopping-site-backend"
           IMAGE_URI="$ECR_REGISTRY/$REPO_NAME:$IMAGE_TAG"
 
-          if [ -d "$FOLDER" ]; then
-            echo "🚀 Building backend"
+          echo "🚀 Building backend"
 
-            aws ecr describe-repositories --repository-names $REPO_NAME >/dev/null 2>&1 || \
-              aws ecr create-repository \
-                --repository-name $REPO_NAME \
-                --image-scanning-configuration scanOnPush=true
+          aws ecr describe-repositories --repository-names $REPO_NAME >/dev/null 2>&1 || \
+            aws ecr create-repository \
+              --repository-name $REPO_NAME \
+              --image-scanning-configuration scanOnPush=true
 
-            docker build -t $IMAGE_URI $FOLDER
-            docker push $IMAGE_URI
+          docker build -t $IMAGE_URI $FOLDER
+          docker push $IMAGE_URI
 
-            sed -i "s|image: .*|image: $IMAGE_URI|" "$FOLDER/backend-deployment.yml"
-          fi
+          sed -i "s|image:.*|image: $IMAGE_URI|g" "$FOLDER/backend-deployment.yml"
 
       # -------------------------
-      # Commit YAML changes (FIXED PUSH)
+      # Commit YAML changes
       # -------------------------
       - name: 🔄 Commit updated YAML files
         run: |
@@ -109,35 +105,93 @@ jobs:
 
           git add frontend/**/deployment.yml backend/backend-deployment.yml
           git commit -m "🔄 Update image tags after build [skip ci]" || echo "No changes"
-
-          git push https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git HEAD:main || echo "Nothing to push"
-
-      # -------------------------
-      # Install kubectl (IMPORTANT FIX)
-      # -------------------------
-      - name: 📦 Install kubectl
-        run: |
-          curl -LO "https://storage.googleapis.com/kubernetes-release/release/$(curl -s https://storage.googleapis.com/kubernetes-release/release/stable.txt)/bin/linux/amd64/kubectl"
-          chmod +x kubectl
-          sudo mv kubectl /usr/local/bin/
+          git push origin main || echo "Nothing to push"
 
       # -------------------------
-      # Configure kubeconfig
-      # -------------------------
-      - name: ⚙️ Update kubeconfig
-        run: |
-          aws eks --region $AWS_REGION update-kubeconfig --name naresh
-
-      # -------------------------
-      # Deploy to EKS
-      # -------------------------
-      - name: 🚀 Deploy to EKS
-        run: |
-          kubectl apply -f frontend/
-          kubectl apply -f backend/
-
-      # -------------------------
-      # Install jq (optional)
+      # Install jq
       # -------------------------
       - name: 📦 Install jq
         run: sudo apt-get update && sudo apt-get install -y jq
+
+      # -------------------------
+      # Scan FRONTEND images
+      # -------------------------
+      # - name: 🔍 Scan Frontend Images in ECR
+      #   run: |
+      #     set -e
+      #     IMAGE_TAG="${GITHUB_SHA}"
+
+      #     echo "🔍 Scanning FRONTEND images..."
+
+      #     for service in $FRONTEND_SERVICES; do
+      #       REPO_NAME="shopping-site-$service"
+
+      #       echo "➡️ Starting scan for $REPO_NAME"
+
+      #       aws ecr start-image-scan \
+      #         --repository-name $REPO_NAME \
+      #         --image-id imageTag=$IMAGE_TAG || true
+
+      #       aws ecr wait image-scan-complete \
+      #         --repository-name $REPO_NAME \
+      #         --image-id imageTag=$IMAGE_TAG
+
+      #       FINDINGS=$(aws ecr describe-image-scan-findings \
+      #         --repository-name $REPO_NAME \
+      #         --image-id imageTag=$IMAGE_TAG \
+      #         --query 'imageScanFindings.findingSeverityCounts' \
+      #         --output json)
+
+      #       echo "📄 $REPO_NAME scan results: $FINDINGS"
+
+      #       HIGH=$(echo "$FINDINGS" | jq '.HIGH // 0')
+      #       CRITICAL=$(echo "$FINDINGS" | jq '.CRITICAL // 0')
+
+      #       if [ "$HIGH" -gt 0 ] || [ "$CRITICAL" -gt 0 ]; then
+      #         echo "❌ Vulnerabilities found in $REPO_NAME"
+      #         exit 1
+      #       fi
+      #     done
+
+      #     echo "✅ All frontend images passed scan"
+
+      # # -------------------------
+      # # Scan BACKEND image
+      # # -------------------------
+      # - name: 🔍 Scan Backend Image in ECR
+      #   run: |
+      #     set -e
+      #     IMAGE_TAG="${GITHUB_SHA}"
+
+      #     aws ecr start-image-scan \
+      #       --repository-name shopping-site-backend \
+      #       --image-id imageTag=$IMAGE_TAG || true
+
+      #     aws ecr wait image-scan-complete \
+      #       --repository-name shopping-site-backend \
+      #       --image-id imageTag=$IMAGE_TAG
+
+      #     FINDINGS=$(aws ecr describe-image-scan-findings \
+      #       --repository-name shopping-site-backend \
+      #       --image-id imageTag=$IMAGE_TAG \
+      #       --query 'imageScanFindings.findingSeverityCounts' \
+      #       --output json)
+
+      #     echo "📄 Backend scan results: $FINDINGS"
+
+      #     HIGH=$(echo "$FINDINGS" | jq '.HIGH // 0')
+      #     CRITICAL=$(echo "$FINDINGS" | jq '.CRITICAL // 0')
+
+      #     if [ "$HIGH" -gt 0 ] || [ "$CRITICAL" -gt 0 ]; then
+      #       echo "❌ Vulnerabilities found in backend image"
+      #       exit 1
+      #     fi
+
+      #     echo "✅ Backend image passed scan"
+
+      # -------------------------
+      # Prevent CI loop
+      # -------------------------
+      - name: 🧠 Skip loop if commit was automated
+        if: contains(github.event.head_commit.message, '[skip ci]')
+        run: echo "Skipping re-triggered build"
