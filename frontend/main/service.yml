@@ -2,6 +2,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: main-service
+  namespace: google
   labels:
     app: main-frontend
 spec:
@@ -12,4 +13,3 @@ spec:
     - protocol: TCP
       port: 80
       targetPort: 80
-
