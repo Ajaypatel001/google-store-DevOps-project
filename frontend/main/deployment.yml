@@ -2,6 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: main-frontend-deployment
+  namespace: google
   labels:
     app: main-frontend
 spec:
@@ -16,7 +17,6 @@ spec:
     spec:
       containers:
       - name: main-frontend
-        image: 533267327181.dkr.ecr.us-east-1.amazonaws.com/shopping-site-main:fc48cfde900d9fde26707d30d35594fbd65c51e3
+        image: 533267327181.dkr.ecr.us-east-1.amazonaws.com/shopping-site-main:0449861d34dc6a58f24902905adf6c8b42a8e8fb
         ports:
         - containerPort: 80
-
